@@ -18,12 +18,15 @@ function normalizeTerminalText(text: string) {
   return text.replace(/\r?\n/g, "\r\n");
 }
 
+const SUPPORT_ERROR_MESSAGE =
+  "SharedArrayBuffer is unavailable in this browser session, so interactive stdin cannot start.";
+const textEncoder = new TextEncoder();
+
 export default function PythonIde() {
   const [initialCode, setInitialCode] = useState("");
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>("standby");
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [supportError, setSupportError] = useState<string | null>(null);
-  const [isHydrated, setIsHydrated] = useState(false);
 
   const codeRef = useRef("");
   const persistTimeoutRef = useRef<number | null>(null);
@@ -141,12 +144,10 @@ export default function PythonIde() {
   }, [supportError]);
 
   useEffect(() => {
-    setIsHydrated(true);
-
-    const stored = readStoredCode();
-    if (stored?.code) {
-      codeRef.current = stored.code;
-      setInitialCode(stored.code);
+    const storedCode = readStoredCode();
+    if (storedCode) {
+      codeRef.current = storedCode;
+      setInitialCode(storedCode);
     }
 
     if (
@@ -154,9 +155,7 @@ export default function PythonIde() {
       (typeof window.SharedArrayBuffer === "undefined" ||
         !window.crossOriginIsolated)
     ) {
-      setSupportError(
-        "SharedArrayBuffer is unavailable in this browser session, so interactive stdin cannot start.",
-      );
+      setSupportError(SUPPORT_ERROR_MESSAGE);
       setRuntimeStatus("error");
     }
   }, []);
@@ -176,20 +175,16 @@ export default function PythonIde() {
     (value: string) => {
       codeRef.current = value;
 
-      if (!isHydrated) {
-        return;
-      }
-
       if (persistTimeoutRef.current !== null) {
         window.clearTimeout(persistTimeoutRef.current);
       }
 
       persistTimeoutRef.current = window.setTimeout(() => {
-        persistCode(value, null);
+        persistCode(value);
         persistTimeoutRef.current = null;
       }, 300);
     },
-    [isHydrated],
+    [],
   );
 
   useEffect(() => {
@@ -252,7 +247,7 @@ export default function PythonIde() {
       return;
     }
 
-    const encoded = new TextEncoder().encode(`${input}\n`);
+    const encoded = textEncoder.encode(`${input}\n`);
     if (encoded.length > STDIN_CAPACITY_BYTES) {
       writelnTerminal(
         `stdin is too large. Limit input to ${STDIN_CAPACITY_BYTES - 1} bytes.`,
