@@ -7,8 +7,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { DEFAULT_TEMPLATE } from "@/lib/templates";
-import { clearStoredCode, persistCode, readStoredCode } from "@/lib/storage";
+import { persistCode, readStoredCode } from "@/lib/storage";
 import {
   INTERRUPT_SIGNAL,
   STDIN_CAPACITY_BYTES,
@@ -60,7 +59,7 @@ function normalizeTerminalText(text: string) {
 }
 
 export default function PythonIde() {
-  const [code, setCode] = useState(DEFAULT_TEMPLATE.code);
+  const [code, setCode] = useState("");
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>("standby");
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [supportError, setSupportError] = useState<string | null>(null);
@@ -496,17 +495,6 @@ export default function PythonIde() {
     focusTerminal();
   }
 
-  function handleReset() {
-    clearStoredCode();
-    setCode(DEFAULT_TEMPLATE.code);
-    currentInputRef.current = "";
-    setAwaitingInput(false);
-    setRuntimeStatus("standby");
-    resetWorker();
-    resetTerminal();
-    focusTerminal();
-  }
-
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -556,13 +544,6 @@ export default function PythonIde() {
               disabled={!workerRef.current || runtimeStatus === "standby"}
             >
               Stop
-            </button>
-            <button
-              type="button"
-              className="chrome-button"
-              onClick={handleReset}
-            >
-              Reset
             </button>
           </div>
 
