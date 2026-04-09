@@ -189,7 +189,13 @@ export default function PythonIde() {
       return;
     }
 
-    persistCode(code, null);
+    const timeoutId = window.setTimeout(() => {
+      persistCode(code, null);
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [code, isHydrated]);
 
   useEffect(() => {

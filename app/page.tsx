@@ -1,5 +1,5 @@
-import PythonIde from "@/components/python-ide";
+import PythonIdeShell from "@/components/python-ide-shell";
 
 export default function Page() {
-  return <PythonIde />;
+  return <PythonIdeShell />;
 }
