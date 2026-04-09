@@ -361,6 +361,16 @@ export default function PythonIde() {
     interruptBufferRef.current = null;
   }
 
+  function forceStop() {
+    resetWorker();
+    currentInputRef.current = "";
+    setAwaitingInput(false);
+    activeRequestIdRef.current = null;
+    setRuntimeStatus("stopped");
+    writelnTerminal("^C");
+    focusTerminal();
+  }
+
   function requestInterrupt() {
     const requestId = activeRequestIdRef.current;
     if (!requestId || !workerRef.current) {
@@ -473,14 +483,14 @@ export default function PythonIde() {
       return;
     }
 
+    if (runtimeStatusRef.current === "waiting-input") {
+      forceStop();
+      return;
+    }
+
     const interrupted = requestInterrupt();
     if (!interrupted) {
-      resetWorker();
-      currentInputRef.current = "";
-      setAwaitingInput(false);
-      activeRequestIdRef.current = null;
-      setRuntimeStatus("stopped");
-      writelnTerminal("^C");
+      forceStop();
     }
     focusTerminal();
   }
