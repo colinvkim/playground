@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { Play, Square } from "lucide-react";
@@ -13,16 +13,6 @@ import {
   type WorkerInboundMessage,
   type WorkerOutboundMessage,
 } from "@/lib/runtime";
-
-const STATUS_LABELS: Record<RuntimeStatus, string> = {
-  standby: "Idle",
-  loading: "Loading",
-  ready: "Ready",
-  running: "Running",
-  "waiting-input": "Input",
-  stopped: "Stopped",
-  error: "Error",
-};
 
 function normalizeTerminalText(text: string) {
   return text.replace(/\r?\n/g, "\r\n");
@@ -53,10 +43,6 @@ export default function PythonIde() {
   const currentInputRef = useRef("");
   const hasLoggedSupportErrorRef = useRef(false);
 
-  const statusLabel = useMemo(
-    () => STATUS_LABELS[runtimeStatus] ?? "Idle",
-    [runtimeStatus],
-  );
   const isProgramActive =
     runtimeStatus === "loading" ||
     runtimeStatus === "running" ||
@@ -87,10 +73,18 @@ export default function PythonIde() {
       convertEol: false,
       cursorBlink: false,
       cursorStyle: "bar",
+      cursorWidth: 2,
       fontFamily: '"JetBrains Mono", "SF Mono", "IBM Plex Mono", monospace',
-      fontSize: 14,
-      lineHeight: 1.5,
+      fontSize: 15,
+      fontWeight: "500",
+      fontWeightBold: "700",
+      lineHeight: 1.45,
       letterSpacing: 0.2,
+      rightClickSelectsWord: true,
+      scrollback: 3000,
+      scrollSensitivity: 1.15,
+      fastScrollSensitivity: 2.5,
+      smoothScrollDuration: 80,
       theme: {
         background: "#02060d",
         foreground: "#d5e6f7",
@@ -111,6 +105,12 @@ export default function PythonIde() {
 
     terminal.loadAddon(fitAddon);
     terminal.open(terminalHostRef.current);
+    const textarea = terminal.textarea;
+    textarea?.setAttribute("autocapitalize", "off");
+    textarea?.setAttribute("autocomplete", "off");
+    textarea?.setAttribute("autocorrect", "off");
+    textarea?.setAttribute("spellcheck", "false");
+    textarea?.setAttribute("aria-label", "Python terminal");
     fitAddon.fit();
     terminal.focus();
     terminalRef.current = terminal;
@@ -539,11 +539,6 @@ export default function PythonIde() {
                 </>
               )}
             </button>
-          </div>
-
-          <div className={`runtime-badge runtime-badge--${runtimeStatus}`}>
-            <span className="runtime-badge__dot" />
-            <span>{statusLabel}</span>
           </div>
         </header>
 

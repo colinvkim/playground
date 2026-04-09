@@ -8,18 +8,22 @@ import { EditorView } from "@codemirror/view";
 
 const editorTheme = EditorView.theme({
   "&": {
-    fontSize: "15px",
-    backgroundColor: "#0f172a",
+    height: "100%",
+    fontSize: "16px",
+    lineHeight: "1.65",
+    backgroundColor: "#0b1422",
   },
   ".cm-content": {
-    padding: "22px 0",
+    padding: "24px 0 32px",
     caretColor: "#f8fafc",
   },
   ".cm-line": {
-    padding: "0 22px",
+    padding: "0 24px",
   },
   ".cm-gutters": {
-    backgroundColor: "#0f172a",
+    minWidth: "52px",
+    paddingRight: "8px",
+    backgroundColor: "#0b1422",
     border: "none",
     color: "#64748b",
   },
@@ -31,6 +35,13 @@ const editorTheme = EditorView.theme({
   },
   ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
     backgroundColor: "rgba(56, 189, 248, 0.24)",
+  },
+  ".cm-cursor": {
+    borderLeftWidth: "2px",
+  },
+  ".cm-scroller": {
+    overflow: "auto",
+    WebkitOverflowScrolling: "touch",
   },
 });
 
@@ -59,21 +70,27 @@ function PythonEditorComponent({
       value={editorCode}
       height="100%"
       theme={oneDark}
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
       basicSetup={{
         lineNumbers: true,
         foldGutter: false,
         dropCursor: false,
         highlightActiveLineGutter: true,
         highlightSpecialChars: false,
+        bracketMatching: true,
+        closeBrackets: true,
+        indentOnInput: true,
       }}
       extensions={[
         python(),
-        EditorView.lineWrapping,
         editorTheme,
-        EditorView.theme({
-          "&": {
-            height: "100%",
-          },
+        EditorView.contentAttributes.of({
+          autocapitalize: "off",
+          autocomplete: "off",
+          autocorrect: "off",
+          spellcheck: "false",
         }),
       ]}
       onChange={handleChange}
