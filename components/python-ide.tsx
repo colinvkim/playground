@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { Play, Square } from "lucide-react";
@@ -45,6 +46,7 @@ export default function PythonIde() {
   const runtimeStatusRef = useRef<RuntimeStatus>("standby");
   const currentInputRef = useRef("");
   const hasLoggedSupportErrorRef = useRef(false);
+  const suppressPrimaryClickRef = useRef(false);
 
   const isProgramActive =
     runtimeStatus === "loading" ||
@@ -483,6 +485,33 @@ export default function PythonIde() {
     focusTerminal();
   }
 
+  function handlePrimaryActionPointerDown(
+    event: PointerEvent<HTMLButtonElement>,
+  ) {
+    if (!isProgramActive) {
+      return;
+    }
+
+    suppressPrimaryClickRef.current = true;
+    event.preventDefault();
+    handleStop();
+  }
+
+  function handlePrimaryActionClick(event: MouseEvent<HTMLButtonElement>) {
+    if (suppressPrimaryClickRef.current) {
+      suppressPrimaryClickRef.current = false;
+      event.preventDefault();
+      return;
+    }
+
+    if (isProgramActive) {
+      handleStop();
+      return;
+    }
+
+    void handleRun();
+  }
+
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -519,7 +548,8 @@ export default function PythonIde() {
                   ? "chrome-button--danger"
                   : "chrome-button--primary"
               }`}
-              onClick={isProgramActive ? handleStop : () => void handleRun()}
+              onPointerDown={handlePrimaryActionPointerDown}
+              onClick={handlePrimaryActionClick}
               disabled={Boolean(supportError) && !isProgramActive}
             >
               {isProgramActive ? (
