@@ -225,12 +225,13 @@ button:disabled {
 .pane--editor .cm-scroller {
   overflow-x: auto !important;
   overflow-y: auto !important;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
-.pane--editor .cm-content,
-.pane--editor .cm-line {
-  width: max-content;
+.pane--editor .cm-sizer {
+  min-width: 100%;
+  width: fit-content;
 }
 
 .pane--editor .cm-gutters {

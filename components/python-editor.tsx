@@ -16,7 +16,6 @@ const editorTheme = EditorView.theme({
   ".cm-content": {
     padding: "18px 0 24px",
     caretColor: "#f8fafc",
-    minWidth: "max-content",
     tabSize: "2",
   },
   ".cm-line": {
@@ -44,7 +43,12 @@ const editorTheme = EditorView.theme({
   ".cm-scroller": {
     overflow: "auto",
     overscrollBehavior: "contain",
+    touchAction: "pan-x pan-y",
     WebkitOverflowScrolling: "touch",
+  },
+  ".cm-sizer": {
+    minWidth: "100%",
+    width: "fit-content",
   },
 });
 
