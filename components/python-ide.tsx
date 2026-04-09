@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
+import { Play, Square } from "lucide-react";
 import PythonEditor from "@/components/python-editor";
 import { persistCode, readStoredCode } from "@/lib/storage";
 import {
@@ -526,7 +527,17 @@ export default function PythonIde() {
               onClick={isProgramActive ? handleStop : () => void handleRun()}
               disabled={Boolean(supportError) && !isProgramActive}
             >
-              {isProgramActive ? "Stop" : "Run"}
+              {isProgramActive ? (
+                <>
+                  <Square size={16} strokeWidth={2.2} aria-hidden="true" />
+                  <span>Stop</span>
+                </>
+              ) : (
+                <>
+                  <Play size={16} strokeWidth={2.2} aria-hidden="true" />
+                  <span>Run</span>
+                </>
+              )}
             </button>
           </div>
 

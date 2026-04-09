@@ -121,6 +121,10 @@ button:disabled {
 }
 
 .chrome-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   min-height: 44px;
   padding: 0 16px;
   border: 1px solid var(--stroke-strong);
