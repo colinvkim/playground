@@ -98,28 +98,28 @@ async function ensurePyodide(options?: { silent?: boolean }) {
         }
 
         instance.setStdout({
-          raw: (charCode) => {
+          batched: (output) => {
             if (!activeRequestId) {
               return;
             }
 
             post({
               type: "stdout",
-              chunk: String.fromCharCode(charCode),
+              chunk: output,
               requestId: activeRequestId,
             });
           },
         });
 
         instance.setStderr({
-          raw: (charCode) => {
+          batched: (output) => {
             if (!activeRequestId) {
               return;
             }
 
             post({
               type: "stderr",
-              chunk: String.fromCharCode(charCode),
+              chunk: output,
               requestId: activeRequestId,
             });
           },
