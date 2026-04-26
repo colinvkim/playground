@@ -507,7 +507,7 @@ export default function PythonPlayground({
   }
 
   return (
-    <main className="grid h-dvh grid-rows-[auto_auto_1fr] overflow-hidden bg-canvas text-ink">
+    <main className="flex h-[calc(100vh+4rem)] min-h-0 flex-col overflow-hidden bg-canvas text-ink">
       <header className="flex h-14 items-center justify-between border-b border-line bg-panel px-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -603,7 +603,7 @@ export default function PythonPlayground({
       </div>
 
       <section
-        className={`grid min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(320px,0.52fr)] ${
+        className={`grid flex-1 min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(320px,0.52fr)] ${
           guideOpen ? "lg:grid-cols-[260px_minmax(0,1fr)_minmax(340px,0.52fr)]" : ""
         }`}
       >
@@ -642,7 +642,7 @@ export default function PythonPlayground({
         </aside>
 
         <section
-          className={`min-h-0 overflow-hidden border-line bg-code-panel md:block ${
+          className={`h-full min-h-0 overflow-hidden border-line bg-code-panel md:block ${
             mobilePanel === "code" ? "block" : "hidden"
           }`}
         >
@@ -650,7 +650,7 @@ export default function PythonPlayground({
         </section>
 
         <section
-          className={`grid min-h-0 grid-rows-[auto_1fr] border-l border-line bg-code md:block ${
+          className={`grid h-full min-h-0 grid-rows-[auto_1fr] border-l border-line bg-code md:grid ${
             mobilePanel === "output" ? "block" : "hidden"
           }`}
         >

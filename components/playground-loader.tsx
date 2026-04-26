@@ -100,7 +100,7 @@ type PlaygroundLoaderProps = {
 
 export default function PlaygroundLoader(props: PlaygroundLoaderProps) {
   return (
-    <div className="playground-loader-frame h-dvh overflow-hidden bg-canvas">
+    <div className="playground-loader-frame overflow-hidden bg-canvas">
       <PythonPlayground {...props} />
     </div>
   );
