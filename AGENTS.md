@@ -104,4 +104,5 @@ For runtime/UI changes, also smoke-test in browser:
 - Worktree may contain user edits. Never revert changes you did not make.
 - Before editing, inspect relevant files.
 - Do not run destructive git commands unless user explicitly asks.
+- Commit after logical checkpoints when changes are verified and the user has asked for commits.
 - Use Conventional Commits format for commits: `fix:`, `feat:`, `chore:`, `refactor:`, `docs:`, etc.
