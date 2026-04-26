@@ -15,6 +15,7 @@ let pendingBytes: Uint8Array | null = null;
 let pendingOffset = 0;
 let activeRequestId: string | null = null;
 let awaitingInput = false;
+const decoder = new TextDecoder();
 
 function post(message: WorkerOutboundMessage) {
   self.postMessage(message);
@@ -49,6 +50,12 @@ function readFromSharedStdin() {
 }
 
 function readStdin(buffer: Uint8Array) {
+  if (!stdinMeta || !stdinBytes) {
+    throw new Error(
+      "input() is unavailable because this browser session is not cross-origin isolated.",
+    );
+  }
+
   while (!pendingBytes || pendingOffset >= pendingBytes.length) {
     if (!awaitingInput) {
       awaitingInput = true;
@@ -105,7 +112,7 @@ async function ensurePyodide(options?: { silent?: boolean }) {
 
             post({
               type: "stdout",
-              chunk: new TextDecoder().decode(buffer),
+              chunk: decoder.decode(buffer),
               requestId: activeRequestId,
             });
             return buffer.length;
@@ -120,7 +127,7 @@ async function ensurePyodide(options?: { silent?: boolean }) {
 
             post({
               type: "stderr",
-              chunk: new TextDecoder().decode(buffer),
+              chunk: decoder.decode(buffer),
               requestId: activeRequestId,
             });
             return buffer.length;
@@ -153,6 +160,7 @@ async function runCode(code: string, requestId: string) {
   if (interruptBuffer) {
     Atomics.store(interruptBuffer, 0, 0);
   }
+
   let pyodide: PyodideInterface | null = null;
 
   try {
@@ -205,20 +213,28 @@ self.onmessage = (event: MessageEvent<WorkerInboundMessage>) => {
   const message = event.data;
 
   if (message.type === "init") {
-    stdinMeta = new Int32Array(message.stdinBuffer, 0, 2);
-    stdinBytes = new Uint8Array(message.stdinBuffer, 8);
-    interruptBuffer = new Int32Array(message.interruptBuffer);
-    pyodideInstance?.setInterruptBuffer(interruptBuffer);
-    return;
-  }
+    if (message.stdinBuffer) {
+      stdinMeta = new Int32Array(message.stdinBuffer, 0, 2);
+      stdinBytes = new Uint8Array(message.stdinBuffer, 8);
+    }
 
-  if (message.type === "run") {
-    void runCode(message.code, message.requestId);
+    if (message.interruptBuffer) {
+      interruptBuffer = new Int32Array(message.interruptBuffer);
+    }
+
+    if (interruptBuffer) {
+      pyodideInstance?.setInterruptBuffer(interruptBuffer);
+    }
     return;
   }
 
   if (message.type === "warm") {
     void ensurePyodide({ silent: true });
+    return;
+  }
+
+  if (message.type === "run") {
+    void runCode(message.code, message.requestId);
     return;
   }
 

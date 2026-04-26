@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -9,24 +9,24 @@ import { EditorView, placeholder } from "@codemirror/view";
 const editorTheme = EditorView.theme({
   "&": {
     height: "100%",
-    fontSize: "16px",
+    fontSize: "15px",
     lineHeight: "1.65",
-    backgroundColor: "#0b1422",
+    backgroundColor: "var(--color-code-panel)",
   },
   ".cm-content": {
-    padding: "18px 0 24px",
     caretColor: "#f8fafc",
-    tabSize: "2",
+    padding: "16px 0 24px",
+    tabSize: "4",
   },
   ".cm-line": {
     padding: "0 16px",
   },
   ".cm-gutters": {
-    minWidth: "40px",
-    paddingRight: "4px",
-    backgroundColor: "#0b1422",
+    backgroundColor: "var(--color-code-panel)",
     border: "none",
     color: "#64748b",
+    minWidth: "42px",
+    paddingRight: "4px",
   },
   ".cm-activeLineGutter": {
     backgroundColor: "rgba(56, 189, 248, 0.14)",
@@ -41,14 +41,13 @@ const editorTheme = EditorView.theme({
     borderLeftWidth: "2px",
   },
   ".cm-placeholder": {
+    color: "rgba(148, 163, 184, 0.62)",
     paddingLeft: "16px",
-    color: "rgba(148, 163, 184, 0.56)",
   },
   ".cm-scroller": {
     overflow: "auto",
     overscrollBehavior: "contain",
     touchAction: "pan-x pan-y",
-    WebkitOverflowScrolling: "touch",
   },
   ".cm-sizer": {
     minWidth: "100%",
@@ -57,28 +56,33 @@ const editorTheme = EditorView.theme({
 });
 
 type PythonEditorProps = {
-  initialCode: string;
+  code: string;
   onCodeChange: (value: string) => void;
 };
 
-function PythonEditorComponent({
-  initialCode,
-  onCodeChange,
-}: PythonEditorProps) {
-  const [editorCode, setEditorCode] = useState(initialCode);
-
-  useEffect(() => {
-    setEditorCode(initialCode);
-  }, [initialCode]);
+function PythonEditorComponent({ code, onCodeChange }: PythonEditorProps) {
+  const extensions = useMemo(
+    () => [
+      python(),
+      editorTheme,
+      placeholder("Write Python here, then run it."),
+      EditorView.contentAttributes.of({
+        autocapitalize: "off",
+        autocomplete: "off",
+        autocorrect: "off",
+        spellcheck: "false",
+      }),
+    ],
+    [],
+  );
 
   function handleChange(value: string) {
-    setEditorCode(value);
     onCodeChange(value);
   }
 
   return (
     <CodeMirror
-      value={editorCode}
+      value={code}
       height="100%"
       theme={oneDark}
       autoCorrect="off"
@@ -92,21 +96,11 @@ function PythonEditorComponent({
         highlightSpecialChars: false,
         bracketMatching: true,
         closeBrackets: false,
-        indentOnInput: false,
+        indentOnInput: true,
         autocompletion: false,
         completionKeymap: false,
       }}
-      extensions={[
-        python(),
-        editorTheme,
-        placeholder("Type Python code here, then press Run"),
-        EditorView.contentAttributes.of({
-          autocapitalize: "off",
-          autocomplete: "off",
-          autocorrect: "off",
-          spellcheck: "false",
-        }),
-      ]}
+      extensions={extensions}
       onChange={handleChange}
     />
   );

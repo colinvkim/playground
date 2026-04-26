@@ -1,6 +1,6 @@
 import PlaygroundLoader from "@/components/playground-loader";
 import {
-  getDefaultPlayground,
+  getLanguage,
   getLessonStarter,
   languageCatalog,
 } from "@/lib/playground-catalog";
@@ -11,16 +11,16 @@ type PageProps = {
   }>;
 };
 
-export default async function Page({ searchParams }: PageProps) {
+export default async function PythonPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const playground = getDefaultPlayground();
-  const lesson = getLessonStarter(playground.language.id, params?.lesson);
+  const language = getLanguage("python");
+  const lesson = getLessonStarter(language.id, params?.lesson);
 
   return (
     <PlaygroundLoader
-      activeLanguage={playground.language}
+      activeLanguage={language}
       availableLanguages={languageCatalog}
-      defaultCode={lesson?.starterCode ?? playground.language.defaultCode}
+      defaultCode={lesson?.starterCode ?? language.defaultCode}
       lesson={lesson}
     />
   );

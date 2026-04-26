@@ -13,8 +13,8 @@ export type RuntimeStatus =
 export type WorkerInboundMessage =
   | {
       type: "init";
-      stdinBuffer: SharedArrayBuffer;
-      interruptBuffer: SharedArrayBuffer;
+      stdinBuffer?: SharedArrayBuffer;
+      interruptBuffer?: SharedArrayBuffer;
     }
   | {
       type: "warm";
