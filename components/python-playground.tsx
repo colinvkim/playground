@@ -28,6 +28,10 @@ import {
   type WorkerInboundMessage,
   type WorkerOutboundMessage,
 } from "@/lib/runtime";
+import {
+  getPythonWorkerClient,
+  resetPythonWorkerClient,
+} from "@/lib/python-worker-client";
 import { getStorageKey, persistCode, readStoredCode } from "@/lib/storage";
 
 type PythonPlaygroundProps = {
@@ -47,25 +51,6 @@ const textEncoder = new TextEncoder();
 
 function normalizeTerminalText(text: string) {
   return text.replace(/\r?\n/g, "\r\n");
-}
-
-function statusLabel(status: RuntimeStatus) {
-  switch (status) {
-    case "loading":
-      return "Loading Python";
-    case "ready":
-      return "Ready";
-    case "running":
-      return "Running";
-    case "waiting-input":
-      return "Waiting for input";
-    case "stopped":
-      return "Stopped";
-    case "error":
-      return "Error";
-    default:
-      return "Standby";
-  }
 }
 
 function useTheme() {
@@ -136,7 +121,6 @@ export default function PythonPlayground({
   const awaitingInputRef = useRef(false);
   const runtimeStatusRef = useRef<RuntimeStatus>("standby");
   const hasLoggedSupportErrorRef = useRef(false);
-  const prewarmRequestedRef = useRef(false);
 
   const writeTerminal = useCallback((text: string) => {
     terminalRef.current?.write(normalizeTerminalText(text));
@@ -201,61 +185,31 @@ export default function PythonPlayground({
     [writeTerminal, writelnTerminal],
   );
 
+  const handleWorkerError = useCallback(
+    (event: ErrorEvent) => {
+      writelnTerminal(event.message);
+      setRuntimeStatus("error");
+      activeRequestIdRef.current = null;
+    },
+    [writelnTerminal],
+  );
+
   const ensureWorker = useCallback(() => {
     if (workerRef.current) {
       return workerRef.current;
     }
 
-    const worker = new Worker(new URL("../workers/python.worker.ts", import.meta.url), {
-      type: "module",
-    });
+    const workerClient = getPythonWorkerClient();
+    const { worker } = workerClient;
 
     worker.addEventListener("message", handleWorkerMessage);
-    worker.addEventListener("error", (event) => {
-      writelnTerminal(event.message);
-      setRuntimeStatus("error");
-      activeRequestIdRef.current = null;
-    });
-
-    const canUseSharedBuffers =
-      typeof SharedArrayBuffer !== "undefined" && window.crossOriginIsolated;
-    const stdinBuffer = canUseSharedBuffers
-      ? new SharedArrayBuffer(8 + STDIN_CAPACITY_BYTES)
-      : undefined;
-    const interruptBuffer = canUseSharedBuffers ? new SharedArrayBuffer(4) : undefined;
-
-    if (stdinBuffer) {
-      stdinMetaRef.current = new Int32Array(stdinBuffer, 0, 2);
-      stdinBytesRef.current = new Uint8Array(stdinBuffer, 8);
-    }
-
-    if (interruptBuffer) {
-      interruptBufferRef.current = new Int32Array(interruptBuffer);
-    }
-
-    const message: WorkerInboundMessage = {
-      type: "init",
-      stdinBuffer,
-      interruptBuffer,
-    };
-    worker.postMessage(message);
+    worker.addEventListener("error", handleWorkerError);
+    stdinMetaRef.current = workerClient.stdinMeta;
+    stdinBytesRef.current = workerClient.stdinBytes;
+    interruptBufferRef.current = workerClient.interruptBuffer;
     workerRef.current = worker;
     return worker;
-  }, [handleWorkerMessage, writelnTerminal]);
-
-  const prewarmWorker = useCallback(() => {
-    if (prewarmRequestedRef.current) {
-      return;
-    }
-
-    const worker = ensureWorker();
-    if (!worker) {
-      return;
-    }
-
-    prewarmRequestedRef.current = true;
-    worker.postMessage({ type: "warm" } satisfies WorkerInboundMessage);
-  }, [ensureWorker]);
+  }, [handleWorkerError, handleWorkerMessage]);
 
   const resetTerminal = useCallback(() => {
     currentInputRef.current = "";
@@ -297,8 +251,13 @@ export default function PythonPlayground({
     }
 
     if (runtimeStatusRef.current === "loading") {
-      workerRef.current.terminate();
+      workerRef.current.removeEventListener("message", handleWorkerMessage);
+      workerRef.current.removeEventListener("error", handleWorkerError);
+      resetPythonWorkerClient();
       workerRef.current = null;
+      stdinMetaRef.current = null;
+      stdinBytesRef.current = null;
+      interruptBufferRef.current = null;
       activeRequestIdRef.current = null;
       setRuntimeStatus("stopped");
       writelnTerminal("^C");
@@ -314,7 +273,9 @@ export default function PythonPlayground({
       return;
     }
 
-    workerRef.current.terminate();
+    workerRef.current.removeEventListener("message", handleWorkerMessage);
+    workerRef.current.removeEventListener("error", handleWorkerError);
+    resetPythonWorkerClient();
     workerRef.current = null;
     stdinMetaRef.current = null;
     stdinBytesRef.current = null;
@@ -323,7 +284,7 @@ export default function PythonPlayground({
     setAwaitingInput(false);
     setRuntimeStatus("stopped");
     writelnTerminal("^C");
-  }, [writelnTerminal]);
+  }, [handleWorkerError, handleWorkerMessage, writelnTerminal]);
 
   const handleTerminalData = useCallback(
     (data: string) => {
@@ -483,38 +444,19 @@ export default function PythonPlayground({
   }, [isIsolated, writelnTerminal]);
 
   useEffect(() => {
-    const warm = () => {
-      prewarmWorker();
-      removeListeners();
-    };
-    const removeListeners = () => {
-      window.removeEventListener("pointerdown", warm);
-      window.removeEventListener("keydown", warm);
-      window.removeEventListener("touchstart", warm);
-    };
-    const idleId = window.requestIdleCallback(warm, { timeout: 1800 });
-
-    window.addEventListener("pointerdown", warm, { once: true, passive: true });
-    window.addEventListener("keydown", warm, { once: true });
-    window.addEventListener("touchstart", warm, { once: true, passive: true });
-
-    return () => {
-      removeListeners();
-      if (idleId !== undefined) {
-        window.cancelIdleCallback?.(idleId);
-      }
-    };
-  }, [prewarmWorker]);
-
-  useEffect(() => {
     return () => {
       if (persistTimeoutRef.current !== null) {
         window.clearTimeout(persistTimeoutRef.current);
       }
-      workerRef.current?.terminate();
+      workerRef.current?.removeEventListener("message", handleWorkerMessage);
+      workerRef.current?.removeEventListener("error", handleWorkerError);
+      resetPythonWorkerClient();
       workerRef.current = null;
+      stdinMetaRef.current = null;
+      stdinBytesRef.current = null;
+      interruptBufferRef.current = null;
     };
-  }, []);
+  }, [handleWorkerError, handleWorkerMessage]);
 
   function handleCodeChange(value: string) {
     codeRef.current = value;
@@ -611,9 +553,6 @@ export default function PythonPlayground({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="hidden rounded-md border border-line bg-panel-strong px-2 py-1 text-xs text-muted sm:inline">
-            {statusLabel(runtimeStatus)}
-          </span>
           <button
             type="button"
             className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line bg-panel-strong px-3 text-sm font-medium text-ink transition hover:border-accent/50 disabled:opacity-50"

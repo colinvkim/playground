@@ -15,6 +15,7 @@
 - `components/python-editor.tsx`: CodeMirror editor setup.
 - `workers/python.worker.ts`: Pyodide runtime worker.
 - `lib/playground-catalog.ts`: language catalog and lesson starters.
+- `lib/python-worker-client.ts`: shared browser-side Python worker singleton and Pyodide prewarm entrypoint.
 - `lib/runtime.ts`: worker message protocol and runtime constants.
 - `lib/storage.ts`: localStorage keys and persistence helpers.
 - `next.config.ts`: cross-origin isolation headers required for SharedArrayBuffer.
