@@ -41,7 +41,6 @@
 
   html,
   body {
-    height: calc(100vh + 4rem);
     min-height: 100%;
     background: var(--color-canvas);
     color: var(--color-ink);
@@ -49,11 +48,12 @@
   }
 
   body {
+    min-height: 100dvh;
     overflow: hidden;
   }
 
   .playground-loader-frame {
-    height: calc(100vh + 4rem);
+    height: 100dvh;
     min-height: 0;
   }
 
@@ -204,9 +204,4 @@
 
 .terminal-host .xterm-viewport {
   background: transparent !important;
-}
-
-html,
-body {
-  height: calc(100vh + 4rem);
 }

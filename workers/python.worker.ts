@@ -21,6 +21,20 @@ function post(message: WorkerOutboundMessage) {
   self.postMessage(message);
 }
 
+function postStream(type: "stdout" | "stderr", chunk: string) {
+  const requestId = activeRequestId;
+
+  if (!requestId || chunk.length === 0) {
+    return;
+  }
+
+  post({
+    type,
+    chunk,
+    requestId,
+  });
+}
+
 function ensureStdinReady() {
   if (!stdinMeta || !stdinBytes) {
     throw new Error("stdin bridge was not initialized.");
@@ -106,30 +120,14 @@ async function ensurePyodide(options?: { silent?: boolean }) {
 
         instance.setStdout({
           write: (buffer) => {
-            if (!activeRequestId) {
-              return buffer.length;
-            }
-
-            post({
-              type: "stdout",
-              chunk: decoder.decode(buffer),
-              requestId: activeRequestId,
-            });
+            postStream("stdout", decoder.decode(buffer));
             return buffer.length;
           },
         });
 
         instance.setStderr({
           write: (buffer) => {
-            if (!activeRequestId) {
-              return buffer.length;
-            }
-
-            post({
-              type: "stderr",
-              chunk: decoder.decode(buffer),
-              requestId: activeRequestId,
-            });
+            postStream("stderr", decoder.decode(buffer));
             return buffer.length;
           },
         });

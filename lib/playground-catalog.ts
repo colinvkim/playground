@@ -5,8 +5,10 @@ export type PlaygroundLanguage = {
   label: string;
   status: LanguageStatus;
   learnCourseSlug: string;
+  playgroundPath: `/${string}` | null;
   fileExtension: string;
   runtime: "pyodide" | "planned";
+  runtimeLabel: string;
   defaultCode: string;
 };
 
@@ -24,8 +26,10 @@ export const languageCatalog: PlaygroundLanguage[] = [
     label: "Python",
     status: "ready",
     learnCourseSlug: "python",
+    playgroundPath: "/python",
     fileExtension: "py",
     runtime: "pyodide",
+    runtimeLabel: "Pyodide worker",
     defaultCode: `name = "Ada"
 print(f"Hello, {name}.")
 
@@ -38,8 +42,10 @@ for number in range(1, 4):
     label: "JavaScript",
     status: "planned",
     learnCourseSlug: "javascript",
+    playgroundPath: null,
     fileExtension: "js",
     runtime: "planned",
+    runtimeLabel: "Planned",
     defaultCode: "",
   },
   {
@@ -47,8 +53,10 @@ for number in range(1, 4):
     label: "TypeScript",
     status: "planned",
     learnCourseSlug: "typescript",
+    playgroundPath: null,
     fileExtension: "ts",
     runtime: "planned",
+    runtimeLabel: "Planned",
     defaultCode: "",
   },
   {
@@ -56,8 +64,10 @@ for number in range(1, 4):
     label: "Swift",
     status: "planned",
     learnCourseSlug: "swift",
+    playgroundPath: null,
     fileExtension: "swift",
     runtime: "planned",
+    runtimeLabel: "Planned",
     defaultCode: "",
   },
   {
@@ -65,8 +75,10 @@ for number in range(1, 4):
     label: "C++",
     status: "planned",
     learnCourseSlug: "cpp",
+    playgroundPath: null,
     fileExtension: "cpp",
     runtime: "planned",
+    runtimeLabel: "Planned",
     defaultCode: "",
   },
 ];

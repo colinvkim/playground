@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# learn.colinkim.dev playground
 
-## Getting Started
+Focused browser playground infrastructure for `learn.colinkim.dev`.
 
-First, run the development server:
+## What Runs Today
+
+- `/` and `/python` load the Python playground.
+- Python executes locally in a Pyodide web worker.
+- CodeMirror powers the editor, xterm powers the terminal.
+- `?lesson=<slug>` selects a lesson starter from `lib/playground-catalog.ts`.
+- Code autosaves per language and lesson in localStorage.
+- Theme preference stores at `learn-playground:theme`.
+- Planned languages are visible in catalog metadata, but stay disabled until runtime support exists.
+
+## Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000/python`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verification
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm lint
+pnpm build
+```
 
-## Learn More
+Runtime/UI smoke checks:
 
-To learn more about Next.js, take a look at the following resources:
+- `/python`
+- `/python?lesson=working-with-json`
+- Run `print("hello")`
+- Run code that raises an exception
+- Test `input()` with cross-origin isolation enabled
+- Test Stop during a running program
+- Confirm autosave, reset, and theme behavior
+- Confirm mobile code/output/guide panels do not overlap
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Key Files
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `components/python-playground.tsx`: playground shell, terminal lifecycle, runtime controls.
+- `components/python-editor.tsx`: CodeMirror setup.
+- `workers/python.worker.ts`: Pyodide execution worker.
+- `lib/playground-catalog.ts`: language metadata and lesson starters.
+- `lib/python-worker-client.ts`: shared browser-side worker singleton.
+- `lib/runtime.ts`: worker protocol.
+- `lib/storage.ts`: localStorage helpers.
+- `next.config.ts`: cross-origin isolation headers for SharedArrayBuffer.

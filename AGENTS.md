@@ -15,6 +15,7 @@
 - `components/python-editor.tsx`: CodeMirror editor setup.
 - `workers/python.worker.ts`: Pyodide runtime worker.
 - `lib/playground-catalog.ts`: language catalog and lesson starters.
+- `lib/playground-catalog.ts` language entries include route/runtime metadata. Planned languages must keep `playgroundPath: null` until runtime exists.
 - `lib/python-worker-client.ts`: shared browser-side Python worker singleton and Pyodide prewarm entrypoint.
 - `lib/runtime.ts`: worker message protocol and runtime constants.
 - `lib/storage.ts`: localStorage keys and persistence helpers.
@@ -33,6 +34,7 @@ Current v1 behavior:
 - Lesson routes use `?lesson=<slug>` and map to starter snippets.
 - User code autosaves per language and lesson in localStorage.
 - Theme toggle stores `learn-playground:theme`.
+- UI shows runtime status, autosave state, code metrics, and last-run duration without changing worker protocol.
 - Other languages may appear in catalog as `planned`, but must not imply runnable support.
 
 ## Runtime Invariants

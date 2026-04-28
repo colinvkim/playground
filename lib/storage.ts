@@ -14,13 +14,22 @@ export function readStoredCode(key: string) {
     return "";
   }
 
-  return window.localStorage.getItem(key) ?? "";
+  try {
+    return window.localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
 }
 
 export function persistCode(key: string, code: string) {
   if (typeof window === "undefined") {
-    return;
+    return false;
   }
 
-  window.localStorage.setItem(key, code);
+  try {
+    window.localStorage.setItem(key, code);
+    return true;
+  } catch {
+    return false;
+  }
 }

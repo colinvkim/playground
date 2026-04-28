@@ -5,14 +5,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import {
+  AlertTriangle,
   BookOpen,
+  CheckCircle2,
+  Clock3,
+  Code2,
+  FileCode2,
+  LoaderCircle,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Play,
   RotateCcw,
+  Save,
+  ShieldCheck,
   Square,
   Sun,
+  TerminalSquare,
   Trash2,
 } from "lucide-react";
 import PythonEditor from "@/components/python-editor";
@@ -43,26 +52,144 @@ type PythonPlaygroundProps = {
 
 type MobilePanel = "code" | "output" | "guide";
 type Theme = "light" | "dark";
+type SaveStatus = "saved" | "saving" | "blocked";
+type LastRunOutcome = "success" | "error" | "stopped";
+type StatusTone = "neutral" | "accent" | "success" | "warning" | "danger";
+
+type LastRun = {
+  durationMs: number;
+  outcome: LastRunOutcome;
+};
 
 const LEARN_ORIGIN = "https://learn.colinkim.dev";
 const INTERACTIVE_WARNING =
   "Python can run, but input() and soft interrupts need cross-origin isolation in this browser.";
+const MAX_TERMINAL_TRANSCRIPT_CHARS = 20000;
 const textEncoder = new TextEncoder();
+const numberFormatter = new Intl.NumberFormat("en-US");
+
+const runtimeStatusMeta: Record<
+  RuntimeStatus,
+  { label: string; tone: StatusTone }
+> = {
+  standby: { label: "Standby", tone: "neutral" },
+  loading: { label: "Loading Pyodide", tone: "accent" },
+  ready: { label: "Ready", tone: "success" },
+  running: { label: "Running", tone: "accent" },
+  "waiting-input": { label: "Waiting for input", tone: "warning" },
+  stopped: { label: "Stopped", tone: "neutral" },
+  error: { label: "Error", tone: "danger" },
+};
+
+const saveStatusMeta: Record<SaveStatus, { label: string; tone: StatusTone }> = {
+  saved: { label: "Saved", tone: "success" },
+  saving: { label: "Saving", tone: "accent" },
+  blocked: { label: "Local save blocked", tone: "warning" },
+};
+
+const mobilePanels: { id: MobilePanel; label: string }[] = [
+  { id: "code", label: "Code" },
+  { id: "output", label: "Output" },
+  { id: "guide", label: "Guide" },
+];
 
 function normalizeTerminalText(text: string) {
   return text.replace(/\r?\n/g, "\r\n");
 }
 
-function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === "undefined") {
-      return "light";
-    }
+function appendTerminalTranscript(current: string, text: string) {
+  const plainText = text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
 
-    const stored = window.localStorage.getItem("learn-playground:theme");
-    const preferredDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return stored === "dark" || (!stored && preferredDark) ? "dark" : "light";
-  });
+  if (!plainText) {
+    return current;
+  }
+
+  const nextTranscript = `${current}${plainText}`;
+  return nextTranscript.length > MAX_TERMINAL_TRANSCRIPT_CHARS
+    ? nextTranscript.slice(-MAX_TERMINAL_TRANSCRIPT_CHARS)
+    : nextTranscript;
+}
+
+function formatDuration(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+    return "0ms";
+  }
+
+  if (milliseconds < 1000) {
+    return `${Math.round(milliseconds)}ms`;
+  }
+
+  if (milliseconds < 10000) {
+    return `${(milliseconds / 1000).toFixed(1)}s`;
+  }
+
+  return `${Math.round(milliseconds / 1000)}s`;
+}
+
+function getCodeStats(code: string) {
+  const normalizedCode = code.replace(/\r\n/g, "\n");
+  const lines = normalizedCode.length === 0 ? 1 : normalizedCode.split("\n").length;
+
+  return {
+    characters: code.length,
+    lines,
+  };
+}
+
+function getPillClass(tone: StatusTone) {
+  switch (tone) {
+    case "accent":
+      return "border-accent/30 bg-accent/10 text-accent";
+    case "success":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200";
+    case "warning":
+      return "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-200";
+    case "danger":
+      return "border-danger/35 bg-danger/10 text-danger";
+    case "neutral":
+    default:
+      return "border-line bg-panel-strong text-muted";
+  }
+}
+
+function getDotClass(tone: StatusTone) {
+  switch (tone) {
+    case "accent":
+      return "bg-accent";
+    case "success":
+      return "bg-emerald-500";
+    case "warning":
+      return "bg-amber-500";
+    case "danger":
+      return "bg-danger";
+    case "neutral":
+    default:
+      return "bg-muted";
+  }
+}
+
+function readInitialTheme(): Theme {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  let stored: string | null = null;
+
+  try {
+    stored = window.localStorage.getItem("learn-playground:theme");
+  } catch {
+    stored = null;
+  }
+
+  const preferredDark =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+  return stored === "dark" || (!stored && preferredDark) ? "dark" : "light";
+}
+
+function useTheme() {
+  const [theme, setTheme] = useState<Theme>(readInitialTheme);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -71,7 +198,13 @@ function useTheme() {
   function toggleTheme() {
     setTheme((current) => {
       const nextTheme = current === "dark" ? "light" : "dark";
-      window.localStorage.setItem("learn-playground:theme", nextTheme);
+
+      try {
+        window.localStorage.setItem("learn-playground:theme", nextTheme);
+      } catch {
+        // Theme still applies for this session when localStorage is unavailable.
+      }
+
       document.documentElement.classList.toggle("dark", nextTheme === "dark");
       return nextTheme;
     });
@@ -92,13 +225,29 @@ export default function PythonPlayground({
   const [isIsolated, setIsIsolated] = useState(true);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("code");
   const [guideOpen, setGuideOpen] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+  const [storageAvailable, setStorageAvailable] = useState(true);
+  const [lastRun, setLastRun] = useState<LastRun | null>(null);
+  const [terminalTranscript, setTerminalTranscript] = useState("");
   const { theme, toggleTheme } = useTheme();
 
   const storageKey = useMemo(
     () => getStorageKey(activeLanguage.id, lesson?.lessonSlug),
     [activeLanguage.id, lesson?.lessonSlug],
   );
-  const pythonLessons = lessonStarters.filter((starter) => starter.languageId === "python");
+  const pythonLessons = useMemo(
+    () => lessonStarters.filter((starter) => starter.languageId === "python"),
+    [],
+  );
+  const plannedLanguages = useMemo(
+    () => availableLanguages.filter((language) => language.status === "planned"),
+    [availableLanguages],
+  );
+  const codeStats = useMemo(() => getCodeStats(code), [code]);
+  const statusMeta = runtimeStatusMeta[runtimeStatus];
+  const saveMeta = saveStatusMeta[saveStatus];
+  const activePlaygroundPath = activeLanguage.playgroundPath ?? "/python";
+  const currentFileName = `${lesson?.lessonSlug ?? "scratch"}.${activeLanguage.fileExtension}`;
   const isProgramActive =
     runtimeStatus === "loading" ||
     runtimeStatus === "running" ||
@@ -112,6 +261,7 @@ export default function PythonPlayground({
   const interruptBufferRef = useRef<Int32Array | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
   const requestSequenceRef = useRef(0);
+  const runStartedAtRef = useRef<number | null>(null);
 
   const terminalHostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -124,6 +274,7 @@ export default function PythonPlayground({
 
   const writeTerminal = useCallback((text: string) => {
     terminalRef.current?.write(normalizeTerminalText(text));
+    setTerminalTranscript((current) => appendTerminalTranscript(current, text));
   }, []);
 
   const writelnTerminal = useCallback(
@@ -132,6 +283,17 @@ export default function PythonPlayground({
     },
     [writeTerminal],
   );
+
+  const completeRun = useCallback((outcome: LastRunOutcome) => {
+    const startedAt = runStartedAtRef.current;
+    const durationMs = startedAt ? performance.now() - startedAt : 0;
+
+    runStartedAtRef.current = null;
+    setLastRun({
+      durationMs,
+      outcome,
+    });
+  }, []);
 
   const handleWorkerMessage = useCallback(
     (event: MessageEvent<WorkerOutboundMessage>) => {
@@ -165,6 +327,7 @@ export default function PythonPlayground({
         case "success":
           setAwaitingInput(false);
           setRuntimeStatus("ready");
+          completeRun("success");
           activeRequestIdRef.current = null;
           break;
         case "interrupted":
@@ -172,26 +335,29 @@ export default function PythonPlayground({
           currentInputRef.current = "";
           writelnTerminal("^C");
           setRuntimeStatus("stopped");
+          completeRun("stopped");
           activeRequestIdRef.current = null;
           break;
         case "error":
           setAwaitingInput(false);
           writelnTerminal(message.error);
           setRuntimeStatus("error");
+          completeRun("error");
           activeRequestIdRef.current = null;
           break;
       }
     },
-    [writeTerminal, writelnTerminal],
+    [completeRun, writeTerminal, writelnTerminal],
   );
 
   const handleWorkerError = useCallback(
     (event: ErrorEvent) => {
       writelnTerminal(event.message);
       setRuntimeStatus("error");
+      completeRun("error");
       activeRequestIdRef.current = null;
     },
-    [writelnTerminal],
+    [completeRun, writelnTerminal],
   );
 
   const ensureWorker = useCallback(() => {
@@ -213,6 +379,7 @@ export default function PythonPlayground({
 
   const resetTerminal = useCallback(() => {
     currentInputRef.current = "";
+    setTerminalTranscript("");
     terminalRef.current?.reset();
     fitAddonRef.current?.fit();
   }, []);
@@ -260,6 +427,7 @@ export default function PythonPlayground({
       interruptBufferRef.current = null;
       activeRequestIdRef.current = null;
       setRuntimeStatus("stopped");
+      completeRun("stopped");
       writelnTerminal("^C");
       return;
     }
@@ -283,8 +451,9 @@ export default function PythonPlayground({
     activeRequestIdRef.current = null;
     setAwaitingInput(false);
     setRuntimeStatus("stopped");
+    completeRun("stopped");
     writelnTerminal("^C");
-  }, [handleWorkerError, handleWorkerMessage, writelnTerminal]);
+  }, [completeRun, handleWorkerError, handleWorkerMessage, writelnTerminal]);
 
   const handleTerminalData = useCallback(
     (data: string) => {
@@ -336,11 +505,17 @@ export default function PythonPlayground({
   );
 
   useEffect(() => {
+    if (persistTimeoutRef.current !== null) {
+      window.clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+    }
+
     const storedCode = readStoredCode(storageKey);
     const nextCode = storedCode || defaultCode;
     codeRef.current = nextCode;
     queueMicrotask(() => {
       setCode(nextCode);
+      setSaveStatus("saved");
     });
 
     const canUseSharedBuffers =
@@ -458,21 +633,27 @@ export default function PythonPlayground({
     };
   }, [handleWorkerError, handleWorkerMessage]);
 
-  function handleCodeChange(value: string) {
-    codeRef.current = value;
-    setCode(value);
+  const handleCodeChange = useCallback(
+    (value: string) => {
+      codeRef.current = value;
+      setCode(value);
+      setSaveStatus("saving");
 
-    if (persistTimeoutRef.current !== null) {
-      window.clearTimeout(persistTimeoutRef.current);
-    }
+      if (persistTimeoutRef.current !== null) {
+        window.clearTimeout(persistTimeoutRef.current);
+      }
 
-    persistTimeoutRef.current = window.setTimeout(() => {
-      persistCode(storageKey, value);
-      persistTimeoutRef.current = null;
-    }, 300);
-  }
+      persistTimeoutRef.current = window.setTimeout(() => {
+        const persisted = persistCode(storageKey, value);
+        setStorageAvailable(persisted);
+        setSaveStatus(persisted ? "saved" : "blocked");
+        persistTimeoutRef.current = null;
+      }, 300);
+    },
+    [storageKey],
+  );
 
-  function handleRun() {
+  const handleRun = useCallback(() => {
     if (isProgramActive) {
       return;
     }
@@ -485,6 +666,8 @@ export default function PythonPlayground({
     resetTerminal();
     const requestId = `python-${Date.now()}-${++requestSequenceRef.current}`;
     activeRequestIdRef.current = requestId;
+    runStartedAtRef.current = performance.now();
+    setLastRun(null);
     setRuntimeStatus("loading");
     setMobilePanel("output");
 
@@ -493,40 +676,66 @@ export default function PythonPlayground({
       code: codeRef.current,
       requestId,
     } satisfies WorkerInboundMessage);
-  }
+  }, [ensureWorker, isProgramActive, resetTerminal]);
 
-  function handleClearOutput() {
+  const handleClearOutput = useCallback(() => {
     resetTerminal();
     terminalRef.current?.focus();
-  }
+  }, [resetTerminal]);
 
-  function handleResetCode() {
+  const handleResetCode = useCallback(() => {
     codeRef.current = defaultCode;
     setCode(defaultCode);
-    persistCode(storageKey, defaultCode);
-  }
+    const persisted = persistCode(storageKey, defaultCode);
+    setStorageAvailable(persisted);
+    setSaveStatus(persisted ? "saved" : "blocked");
+  }, [defaultCode, storageKey]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        if (isProgramActive) {
+          handleStop();
+        } else {
+          handleRun();
+        }
+        return;
+      }
+
+      if (event.key === "Escape" && isProgramActive) {
+        event.preventDefault();
+        handleStop();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleRun, handleStop, isProgramActive]);
 
   return (
-    <main className="flex h-[calc(100vh+4rem)] min-h-0 flex-col overflow-hidden bg-canvas text-ink">
-      <header className="flex h-14 items-center justify-between border-b border-line bg-panel px-3 sm:px-4">
+    <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-canvas text-ink">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-panel px-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            className="focus-ring hidden size-9 items-center justify-center rounded-md border border-line text-muted transition hover:text-ink lg:inline-flex"
+            className="focus-ring hidden size-9 shrink-0 items-center justify-center rounded-md border border-line text-muted transition hover:bg-panel-strong hover:text-ink lg:inline-flex"
             onClick={() => setGuideOpen((current) => !current)}
             aria-label={guideOpen ? "Collapse lesson panel" : "Open lesson panel"}
           >
             {guideOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
           </button>
           <Link
-            href="/python"
-            className="truncate text-sm font-semibold tracking-tight text-ink hover:text-accent"
+            href={activePlaygroundPath}
+            className="focus-ring flex min-w-0 items-center gap-2 rounded-md text-sm font-semibold text-ink hover:text-accent"
           >
-            playground
+            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent-soft text-accent">
+              <Code2 size={17} />
+            </span>
+            <span className="hidden truncate sm:inline">Playground</span>
           </Link>
-          <span className="hidden text-muted sm:inline">/</span>
           <select
-            className="focus-ring rounded-md border border-line bg-panel-strong px-2 py-1 text-sm text-ink"
+            className="focus-ring h-9 min-w-0 rounded-md border border-line bg-panel-strong px-2 text-sm text-ink"
             value={activeLanguage.id}
             aria-label="Language"
             onChange={() => undefined}
@@ -552,19 +761,32 @@ export default function PythonPlayground({
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={`hidden h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-medium md:inline-flex ${getPillClass(
+              statusMeta.tone,
+            )}`}
+          >
+            {runtimeStatus === "loading" ? (
+              <LoaderCircle size={14} className="animate-spin" />
+            ) : (
+              <span className={`size-2 rounded-full ${getDotClass(statusMeta.tone)}`} />
+            )}
+            {statusMeta.label}
+          </span>
           <button
             type="button"
-            className="focus-ring inline-flex h-9 items-center gap-2 rounded-md border border-line bg-panel-strong px-3 text-sm font-medium text-ink transition hover:border-accent/50 disabled:opacity-50"
+            className="focus-ring inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-accent/35 bg-accent px-3 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50"
             onClick={isProgramActive ? handleStop : handleRun}
             disabled={false}
+            title={isProgramActive ? "Stop" : "Run"}
           >
             {isProgramActive ? <Square size={15} /> : <Play size={15} />}
-            <span>{isProgramActive ? "Stop" : "Run"}</span>
+            <span className="hidden sm:inline">{isProgramActive ? "Stop" : "Run"}</span>
           </button>
           <button
             type="button"
-            className="focus-ring hidden size-9 items-center justify-center rounded-md border border-line bg-panel-strong text-muted transition hover:text-ink sm:inline-flex"
+            className="focus-ring hidden size-9 shrink-0 items-center justify-center rounded-md border border-line bg-panel-strong text-muted transition hover:text-ink sm:inline-flex"
             onClick={handleResetCode}
             aria-label="Reset code"
             title="Reset code"
@@ -573,7 +795,7 @@ export default function PythonPlayground({
           </button>
           <button
             type="button"
-            className="focus-ring size-9 rounded-md border border-line bg-panel-strong text-muted transition hover:text-ink"
+            className="focus-ring size-9 shrink-0 rounded-md border border-line bg-panel-strong text-muted transition hover:text-ink"
             onClick={toggleTheme}
             aria-label="Toggle theme"
             title="Toggle theme"
@@ -585,26 +807,29 @@ export default function PythonPlayground({
         </div>
       </header>
 
-      <div className="grid grid-cols-3 border-b border-line bg-panel px-2 py-2 text-sm md:hidden">
-        {(["code", "output", "guide"] as const).map((panel) => (
+      <div className="grid h-12 shrink-0 grid-cols-3 border-b border-line bg-panel px-2 py-2 text-sm md:hidden">
+        {mobilePanels.map((panel) => (
           <button
-            key={panel}
+            key={panel.id}
             type="button"
-            className={`focus-ring rounded-md px-3 py-2 capitalize ${
-              mobilePanel === panel
+            className={`focus-ring inline-flex items-center justify-center gap-2 rounded-md px-3 font-medium ${
+              mobilePanel === panel.id
                 ? "bg-accent-soft text-ink"
                 : "text-muted hover:text-ink"
             }`}
-            onClick={() => setMobilePanel(panel)}
+            onClick={() => setMobilePanel(panel.id)}
           >
-            {panel}
+            {panel.label}
+            {panel.id === "output" && awaitingInput ? (
+              <span className="size-2 rounded-full bg-amber-500" />
+            ) : null}
           </button>
         ))}
       </div>
 
       <section
         className={`grid flex-1 min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(320px,0.52fr)] ${
-          guideOpen ? "lg:grid-cols-[260px_minmax(0,1fr)_minmax(340px,0.52fr)]" : ""
+          guideOpen ? "lg:grid-cols-[280px_minmax(0,1fr)_minmax(360px,0.52fr)]" : ""
         }`}
       >
         <aside
@@ -612,15 +837,28 @@ export default function PythonPlayground({
             guideOpen ? "" : "lg:hidden"
           } ${mobilePanel === "guide" ? "block" : "hidden"}`}
         >
-          <div className="mb-4 flex items-center gap-2 text-sm font-semibold">
-            <BookOpen size={16} />
-            Learn starters
+          <div className="mb-4 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <BookOpen size={16} />
+              Python starters
+            </div>
+            <div className="rounded-md border border-line bg-panel-strong p-3">
+              <p className="text-sm font-medium text-ink">
+                {lesson?.title ?? "Scratch"}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {pythonLessons.length} starters linked to learn.colinkim.dev
+              </p>
+            </div>
           </div>
-          <div className="space-y-1">
+
+          <nav className="space-y-1" aria-label="Python lesson starters">
             <Link
-              href="/python"
+              href={activePlaygroundPath}
               className={`block rounded-md px-3 py-2 text-sm transition ${
-                !lesson ? "bg-accent-soft text-ink" : "text-muted hover:bg-panel-strong hover:text-ink"
+                !lesson
+                  ? "bg-accent-soft text-ink"
+                  : "text-muted hover:bg-panel-strong hover:text-ink"
               }`}
             >
               Scratch
@@ -638,41 +876,99 @@ export default function PythonPlayground({
                 {starter.title}
               </Link>
             ))}
-          </div>
+          </nav>
+
+          {plannedLanguages.length > 0 ? (
+            <div className="mt-6 border-t border-line pt-4">
+              <p className="text-xs font-semibold uppercase text-muted">
+                Future runtimes
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {plannedLanguages.map((language) => (
+                  <span
+                    key={language.id}
+                    className="rounded-md border border-line bg-panel-strong px-2 py-1 text-xs text-muted"
+                  >
+                    {language.label} planned
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </aside>
 
         <section
-          className={`h-full min-h-0 overflow-hidden border-line bg-code-panel md:block ${
-            mobilePanel === "code" ? "block" : "hidden"
+          className={`h-full min-h-0 grid-rows-[auto_1fr_auto] overflow-hidden border-line bg-code-panel md:grid ${
+            mobilePanel === "code" ? "grid" : "hidden"
           }`}
         >
-          <PythonEditor code={code} onCodeChange={handleCodeChange} />
+          <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/10 px-3 text-slate-300">
+            <div className="flex min-w-0 items-center gap-2">
+              <FileCode2 size={15} className="shrink-0 text-slate-400" />
+              <span className="truncate text-sm font-medium">{currentFileName}</span>
+              <span className="hidden rounded-sm bg-white/10 px-2 py-0.5 text-xs text-slate-400 sm:inline">
+                {activeLanguage.runtimeLabel}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs ${getPillClass(
+                  saveMeta.tone,
+                )}`}
+              >
+                {saveStatus === "saved" ? <CheckCircle2 size={13} /> : <Save size={13} />}
+                <span className="hidden sm:inline">{saveMeta.label}</span>
+              </span>
+              <span className="hidden text-xs text-slate-400 sm:inline">
+                {numberFormatter.format(codeStats.lines)} lines
+              </span>
+            </div>
+          </div>
+          <div className="min-h-0">
+            <PythonEditor code={code} onCodeChange={handleCodeChange} />
+          </div>
+          <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-white/10 bg-black/10 px-3 text-xs text-slate-400">
+            <span className="truncate">
+              {storageAvailable ? "Local autosave active" : "Local autosave unavailable"}
+            </span>
+            <span className="shrink-0">
+              {numberFormatter.format(codeStats.characters)} chars
+            </span>
+          </div>
         </section>
 
         <section
-          className={`grid h-full min-h-0 grid-rows-[auto_1fr] border-l border-line bg-code md:grid ${
-            mobilePanel === "output" ? "block" : "hidden"
+          className={`h-full min-h-0 grid-rows-[auto_1fr_auto] border-l border-line bg-code md:grid ${
+            mobilePanel === "output" ? "grid" : "hidden"
           }`}
         >
-          <div className="flex h-11 items-center justify-between border-b border-white/10 bg-black/10 px-3">
-            <div className="flex items-center gap-2">
-              <span className="code-font text-xs font-medium uppercase tracking-wide text-slate-300">
+          <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/10 px-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <TerminalSquare size={15} className="shrink-0 text-slate-400" />
+              <span className="code-font text-xs font-medium uppercase text-slate-300">
                 Output
               </span>
-              {awaitingInput ? (
-                <span className="rounded-sm bg-accent/20 px-2 py-0.5 text-xs text-accent">
-                  input requested
-                </span>
-              ) : null}
+              <span
+                className={`hidden h-7 items-center gap-1.5 rounded-md border px-2 text-xs sm:inline-flex ${getPillClass(
+                  statusMeta.tone,
+                )}`}
+              >
+                {runtimeStatus === "loading" ? (
+                  <LoaderCircle size={13} className="animate-spin" />
+                ) : (
+                  <span className={`size-1.5 rounded-full ${getDotClass(statusMeta.tone)}`} />
+                )}
+                {statusMeta.label}
+              </span>
               {!isIsolated ? (
-                <span className="hidden rounded-sm bg-white/10 px-2 py-0.5 text-xs text-slate-300 sm:inline">
-                  basic runtime
+                <span className="hidden rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300 sm:inline">
+                  Basic runtime
                 </span>
               ) : null}
             </div>
             <button
               type="button"
-              className="focus-ring inline-flex size-8 items-center justify-center rounded-md text-slate-400 transition hover:bg-white/10 hover:text-slate-100"
+              className="focus-ring inline-flex size-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-white/10 hover:text-slate-100"
               onClick={handleClearOutput}
               aria-label="Clear output"
               title="Clear output"
@@ -681,6 +977,30 @@ export default function PythonPlayground({
             </button>
           </div>
           <div ref={terminalHostRef} className="terminal-host min-h-0 p-3" />
+          <pre className="sr-only" aria-live="polite">
+            {terminalTranscript}
+          </pre>
+          <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-white/10 bg-black/10 px-3 text-xs text-slate-400">
+            <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
+              {isIsolated ? (
+                <>
+                  <ShieldCheck size={13} className="shrink-0 text-emerald-300" />
+                  <span className="truncate">Shared buffer ready</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle size={13} className="shrink-0 text-amber-300" />
+                  <span className="truncate">Interactive bridge limited</span>
+                </>
+              )}
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-1.5">
+              <Clock3 size={13} />
+              {lastRun
+                ? `${lastRun.outcome} ${formatDuration(lastRun.durationMs)}`
+                : "No run yet"}
+            </span>
+          </div>
         </section>
       </section>
     </main>
