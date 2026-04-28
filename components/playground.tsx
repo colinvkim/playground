@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -24,7 +25,7 @@ import {
   TerminalSquare,
   Trash2,
 } from "lucide-react";
-import PythonEditor from "@/components/python-editor";
+import CodeEditor from "@/components/code-editor";
 import {
   lessonStarters,
   type LessonStarter,
@@ -40,10 +41,16 @@ import {
 import {
   getPythonWorkerClient,
   resetPythonWorkerClient,
+  warmPythonWorker,
 } from "@/lib/python-worker-client";
+import {
+  getJavaScriptWorkerClient,
+  resetJavaScriptWorkerClient,
+  warmJavaScriptWorker,
+} from "@/lib/javascript-worker-client";
 import { getStorageKey, persistCode, readStoredCode } from "@/lib/storage";
 
-type PythonPlaygroundProps = {
+type PlaygroundProps = {
   activeLanguage: PlaygroundLanguage;
   availableLanguages: PlaygroundLanguage[];
   defaultCode: string;
@@ -62,8 +69,12 @@ type LastRun = {
 };
 
 const LEARN_ORIGIN = "https://learn.colinkim.dev";
-const INTERACTIVE_WARNING =
-  "Python can run, but input() and soft interrupts need cross-origin isolation in this browser.";
+const INTERACTIVE_WARNINGS: Record<"pyodide" | "quickjs", string> = {
+  pyodide:
+    "Python can run, but input() and soft interrupts need cross-origin isolation in this browser.",
+  quickjs:
+    "JavaScript and TypeScript can run, but prompt() and soft interrupts need cross-origin isolation in this browser.",
+};
 const MAX_TERMINAL_TRANSCRIPT_CHARS = 20000;
 const textEncoder = new TextEncoder();
 const numberFormatter = new Intl.NumberFormat("en-US");
@@ -73,7 +84,7 @@ const runtimeStatusMeta: Record<
   { label: string; tone: StatusTone }
 > = {
   standby: { label: "Standby", tone: "neutral" },
-  loading: { label: "Loading Pyodide", tone: "accent" },
+  loading: { label: "Loading runtime", tone: "accent" },
   ready: { label: "Ready", tone: "success" },
   running: { label: "Running", tone: "accent" },
   "waiting-input": { label: "Waiting for input", tone: "warning" },
@@ -213,12 +224,13 @@ function useTheme() {
   return { theme, toggleTheme };
 }
 
-export default function PythonPlayground({
+export default function Playground({
   activeLanguage,
   availableLanguages,
   defaultCode,
   lesson,
-}: PythonPlaygroundProps) {
+}: PlaygroundProps) {
+  const router = useRouter();
   const [code, setCode] = useState(defaultCode);
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus>("standby");
   const [awaitingInput, setAwaitingInput] = useState(false);
@@ -235,9 +247,10 @@ export default function PythonPlayground({
     () => getStorageKey(activeLanguage.id, lesson?.lessonSlug),
     [activeLanguage.id, lesson?.lessonSlug],
   );
-  const pythonLessons = useMemo(
-    () => lessonStarters.filter((starter) => starter.languageId === "python"),
-    [],
+  const activeLessons = useMemo(
+    () =>
+      lessonStarters.filter((starter) => starter.languageId === activeLanguage.id),
+    [activeLanguage.id],
   );
   const plannedLanguages = useMemo(
     () => availableLanguages.filter((language) => language.status === "planned"),
@@ -271,6 +284,28 @@ export default function PythonPlayground({
   const awaitingInputRef = useRef(false);
   const runtimeStatusRef = useRef<RuntimeStatus>("standby");
   const hasLoggedSupportErrorRef = useRef(false);
+
+  const resetActiveWorkerClient = useCallback(() => {
+    if (activeLanguage.runtime === "pyodide") {
+      resetPythonWorkerClient();
+      return;
+    }
+
+    if (activeLanguage.runtime === "quickjs") {
+      resetJavaScriptWorkerClient();
+    }
+  }, [activeLanguage.runtime]);
+
+  const warmActiveWorker = useCallback(() => {
+    if (activeLanguage.runtime === "pyodide") {
+      warmPythonWorker();
+      return;
+    }
+
+    if (activeLanguage.runtime === "quickjs") {
+      warmJavaScriptWorker();
+    }
+  }, [activeLanguage.runtime]);
 
   const writeTerminal = useCallback((text: string) => {
     terminalRef.current?.write(normalizeTerminalText(text));
@@ -365,7 +400,14 @@ export default function PythonPlayground({
       return workerRef.current;
     }
 
-    const workerClient = getPythonWorkerClient();
+    if (activeLanguage.runtime !== "pyodide" && activeLanguage.runtime !== "quickjs") {
+      return null;
+    }
+
+    const workerClient =
+      activeLanguage.runtime === "pyodide"
+        ? getPythonWorkerClient()
+        : getJavaScriptWorkerClient();
     const { worker } = workerClient;
 
     worker.addEventListener("message", handleWorkerMessage);
@@ -375,7 +417,7 @@ export default function PythonPlayground({
     interruptBufferRef.current = workerClient.interruptBuffer;
     workerRef.current = worker;
     return worker;
-  }, [handleWorkerError, handleWorkerMessage]);
+  }, [activeLanguage.runtime, handleWorkerError, handleWorkerMessage]);
 
   const resetTerminal = useCallback(() => {
     currentInputRef.current = "";
@@ -420,7 +462,7 @@ export default function PythonPlayground({
     if (runtimeStatusRef.current === "loading") {
       workerRef.current.removeEventListener("message", handleWorkerMessage);
       workerRef.current.removeEventListener("error", handleWorkerError);
-      resetPythonWorkerClient();
+      resetActiveWorkerClient();
       workerRef.current = null;
       stdinMetaRef.current = null;
       stdinBytesRef.current = null;
@@ -443,7 +485,7 @@ export default function PythonPlayground({
 
     workerRef.current.removeEventListener("message", handleWorkerMessage);
     workerRef.current.removeEventListener("error", handleWorkerError);
-    resetPythonWorkerClient();
+    resetActiveWorkerClient();
     workerRef.current = null;
     stdinMetaRef.current = null;
     stdinBytesRef.current = null;
@@ -453,7 +495,13 @@ export default function PythonPlayground({
     setRuntimeStatus("stopped");
     completeRun("stopped");
     writelnTerminal("^C");
-  }, [completeRun, handleWorkerError, handleWorkerMessage, writelnTerminal]);
+  }, [
+    completeRun,
+    handleWorkerError,
+    handleWorkerMessage,
+    resetActiveWorkerClient,
+    writelnTerminal,
+  ]);
 
   const handleTerminalData = useCallback(
     (data: string) => {
@@ -510,6 +558,7 @@ export default function PythonPlayground({
       persistTimeoutRef.current = null;
     }
 
+    hasLoggedSupportErrorRef.current = false;
     const storedCode = readStoredCode(storageKey);
     const nextCode = storedCode || defaultCode;
     codeRef.current = nextCode;
@@ -534,6 +583,10 @@ export default function PythonPlayground({
       });
     }
   }, [defaultCode, storageKey]);
+
+  useEffect(() => {
+    warmActiveWorker();
+  }, [warmActiveWorker]);
 
   useEffect(() => {
     awaitingInputRef.current = awaitingInput;
@@ -583,7 +636,7 @@ export default function PythonPlayground({
 
     terminal.loadAddon(fitAddon);
     terminal.open(terminalHostRef.current);
-    terminal.textarea?.setAttribute("aria-label", "Python terminal");
+    terminal.textarea?.setAttribute("aria-label", `${activeLanguage.label} terminal`);
     terminal.textarea?.setAttribute("autocapitalize", "off");
     terminal.textarea?.setAttribute("autocomplete", "off");
     terminal.textarea?.setAttribute("autocorrect", "off");
@@ -607,7 +660,7 @@ export default function PythonPlayground({
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [handleTerminalData]);
+  }, [activeLanguage.label, handleTerminalData]);
 
   useEffect(() => {
     if (isIsolated || hasLoggedSupportErrorRef.current || !terminalRef.current) {
@@ -615,8 +668,11 @@ export default function PythonPlayground({
     }
 
     hasLoggedSupportErrorRef.current = true;
-    writelnTerminal(INTERACTIVE_WARNING);
-  }, [isIsolated, writelnTerminal]);
+    if (activeLanguage.runtime === "pyodide" || activeLanguage.runtime === "quickjs") {
+      const warning = INTERACTIVE_WARNINGS[activeLanguage.runtime];
+      queueMicrotask(() => writelnTerminal(warning));
+    }
+  }, [activeLanguage.runtime, isIsolated, writelnTerminal]);
 
   useEffect(() => {
     return () => {
@@ -625,13 +681,13 @@ export default function PythonPlayground({
       }
       workerRef.current?.removeEventListener("message", handleWorkerMessage);
       workerRef.current?.removeEventListener("error", handleWorkerError);
-      resetPythonWorkerClient();
+      resetActiveWorkerClient();
       workerRef.current = null;
       stdinMetaRef.current = null;
       stdinBytesRef.current = null;
       interruptBufferRef.current = null;
     };
-  }, [handleWorkerError, handleWorkerMessage]);
+  }, [handleWorkerError, handleWorkerMessage, resetActiveWorkerClient]);
 
   const handleCodeChange = useCallback(
     (value: string) => {
@@ -658,13 +714,22 @@ export default function PythonPlayground({
       return;
     }
 
+    const languageId = activeLanguage.id;
+    if (
+      languageId !== "python" &&
+      languageId !== "javascript" &&
+      languageId !== "typescript"
+    ) {
+      return;
+    }
+
     const worker = ensureWorker();
     if (!worker) {
       return;
     }
 
     resetTerminal();
-    const requestId = `python-${Date.now()}-${++requestSequenceRef.current}`;
+    const requestId = `${languageId}-${Date.now()}-${++requestSequenceRef.current}`;
     activeRequestIdRef.current = requestId;
     runStartedAtRef.current = performance.now();
     setLastRun(null);
@@ -675,8 +740,9 @@ export default function PythonPlayground({
       type: "run",
       code: codeRef.current,
       requestId,
+      language: languageId,
     } satisfies WorkerInboundMessage);
-  }, [ensureWorker, isProgramActive, resetTerminal]);
+  }, [activeLanguage.id, ensureWorker, isProgramActive, resetTerminal]);
 
   const handleClearOutput = useCallback(() => {
     resetTerminal();
@@ -738,7 +804,15 @@ export default function PythonPlayground({
             className="focus-ring h-9 min-w-0 rounded-md border border-line bg-panel-strong px-2 text-sm text-ink"
             value={activeLanguage.id}
             aria-label="Language"
-            onChange={() => undefined}
+            onChange={(event) => {
+              const nextLanguage = availableLanguages.find(
+                (language) => language.id === event.target.value,
+              );
+
+              if (nextLanguage?.playgroundPath && nextLanguage.status === "ready") {
+                router.push(nextLanguage.playgroundPath);
+              }
+            }}
           >
             {availableLanguages.map((language) => (
               <option
@@ -840,19 +914,19 @@ export default function PythonPlayground({
           <div className="mb-4 space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <BookOpen size={16} />
-              Python starters
+              {activeLanguage.label} starters
             </div>
             <div className="rounded-md border border-line bg-panel-strong p-3">
               <p className="text-sm font-medium text-ink">
                 {lesson?.title ?? "Scratch"}
               </p>
               <p className="mt-1 text-xs text-muted">
-                {pythonLessons.length} starters linked to learn.colinkim.dev
+                {activeLessons.length} starters linked to learn.colinkim.dev
               </p>
             </div>
           </div>
 
-          <nav className="space-y-1" aria-label="Python lesson starters">
+          <nav className="space-y-1" aria-label={`${activeLanguage.label} lesson starters`}>
             <Link
               href={activePlaygroundPath}
               className={`block rounded-md px-3 py-2 text-sm transition ${
@@ -863,10 +937,10 @@ export default function PythonPlayground({
             >
               Scratch
             </Link>
-            {pythonLessons.map((starter) => (
+            {activeLessons.map((starter) => (
               <Link
                 key={starter.lessonSlug}
-                href={`/python?lesson=${starter.lessonSlug}`}
+                href={`${activePlaygroundPath}?lesson=${starter.lessonSlug}`}
                 className={`block rounded-md px-3 py-2 text-sm transition ${
                   lesson?.lessonSlug === starter.lessonSlug
                     ? "bg-accent-soft text-ink"
@@ -925,7 +999,11 @@ export default function PythonPlayground({
             </div>
           </div>
           <div className="min-h-0">
-            <PythonEditor code={code} onCodeChange={handleCodeChange} />
+            <CodeEditor
+              code={code}
+              language={activeLanguage}
+              onCodeChange={handleCodeChange}
+            />
           </div>
           <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-white/10 bg-black/10 px-3 text-xs text-slate-400">
             <span className="truncate">

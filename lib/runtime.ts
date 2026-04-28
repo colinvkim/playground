@@ -1,6 +1,8 @@
 export const STDIN_CAPACITY_BYTES = 8192;
 export const INTERRUPT_SIGNAL = 2;
 
+export type RunnableLanguageId = "python" | "javascript" | "typescript";
+
 export type RuntimeStatus =
   | "standby"
   | "loading"
@@ -23,6 +25,7 @@ export type WorkerInboundMessage =
       type: "run";
       code: string;
       requestId: string;
+      language?: RunnableLanguageId;
     }
   | {
       type: "stop";

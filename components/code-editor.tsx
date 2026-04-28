@@ -2,9 +2,11 @@
 
 import { memo, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
+import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, placeholder } from "@codemirror/view";
+import type { PlaygroundLanguage } from "@/lib/playground-catalog";
 
 const editorTheme = EditorView.theme({
   "&": {
@@ -55,17 +57,30 @@ const editorTheme = EditorView.theme({
   },
 });
 
-type PythonEditorProps = {
+type CodeEditorProps = {
   code: string;
+  language: PlaygroundLanguage;
   onCodeChange: (value: string) => void;
 };
 
-function PythonEditorComponent({ code, onCodeChange }: PythonEditorProps) {
+function getLanguageExtension(language: PlaygroundLanguage) {
+  switch (language.id) {
+    case "javascript":
+      return javascript();
+    case "typescript":
+      return javascript({ typescript: true });
+    case "python":
+    default:
+      return python();
+  }
+}
+
+function CodeEditorComponent({ code, language, onCodeChange }: CodeEditorProps) {
   const extensions = useMemo(
     () => [
-      python(),
+      getLanguageExtension(language),
       editorTheme,
-      placeholder("Write Python here, then run it."),
+      placeholder(`Write ${language.label} here, then run it.`),
       EditorView.contentAttributes.of({
         autocapitalize: "off",
         autocomplete: "off",
@@ -73,7 +88,7 @@ function PythonEditorComponent({ code, onCodeChange }: PythonEditorProps) {
         spellcheck: "false",
       }),
     ],
-    [],
+    [language],
   );
 
   function handleChange(value: string) {
@@ -106,6 +121,6 @@ function PythonEditorComponent({ code, onCodeChange }: PythonEditorProps) {
   );
 }
 
-const PythonEditor = memo(PythonEditorComponent);
+const CodeEditor = memo(CodeEditorComponent);
 
-export default PythonEditor;
+export default CodeEditor;

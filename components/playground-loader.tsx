@@ -6,13 +6,10 @@ import type {
   LessonStarter,
   PlaygroundLanguage,
 } from "@/lib/playground-catalog";
-import { warmPythonWorker } from "@/lib/python-worker-client";
 
 const MIN_LOADING_MS = 1000;
 
 function waitForMinimumLoadingTime() {
-  warmPythonWorker();
-
   return new Promise((resolve) => {
     window.setTimeout(resolve, MIN_LOADING_MS);
   });
@@ -32,7 +29,7 @@ function LoadingPlayground() {
               <Braces size={18} />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-ink">Python playground</p>
+              <p className="truncate text-sm font-semibold text-ink">Playground</p>
               <p className="truncate text-xs text-muted">Loading editor and runtime</p>
             </div>
           </div>
@@ -79,10 +76,10 @@ function LoadingPlayground() {
   );
 }
 
-const PythonPlayground = dynamic(
+const Playground = dynamic(
   () =>
     Promise.all([
-      import("@/components/python-playground"),
+      import("@/components/playground"),
       waitForMinimumLoadingTime(),
     ]).then(([module]) => module),
   {
@@ -101,7 +98,7 @@ type PlaygroundLoaderProps = {
 export default function PlaygroundLoader(props: PlaygroundLoaderProps) {
   return (
     <div className="playground-loader-frame overflow-hidden bg-canvas">
-      <PythonPlayground {...props} />
+      <Playground {...props} />
     </div>
   );
 }

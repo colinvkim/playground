@@ -7,7 +7,7 @@ export type PlaygroundLanguage = {
   learnCourseSlug: string;
   playgroundPath: `/${string}` | null;
   fileExtension: string;
-  runtime: "pyodide" | "planned";
+  runtime: "pyodide" | "quickjs" | "planned";
   runtimeLabel: string;
   defaultCode: string;
 };
@@ -40,24 +40,41 @@ for number in range(1, 4):
   {
     id: "javascript",
     label: "JavaScript",
-    status: "planned",
+    status: "ready",
     learnCourseSlug: "javascript",
-    playgroundPath: null,
+    playgroundPath: "/javascript",
     fileExtension: "js",
-    runtime: "planned",
-    runtimeLabel: "Planned",
-    defaultCode: "",
+    runtime: "quickjs",
+    runtimeLabel: "QuickJS worker",
+    defaultCode: `const name = "Ada";
+console.log(\`Hello, \${name}.\`);
+
+for (let number = 1; number <= 3; number += 1) {
+  console.log(number);
+}
+`,
   },
   {
     id: "typescript",
     label: "TypeScript",
-    status: "planned",
+    status: "ready",
     learnCourseSlug: "typescript",
-    playgroundPath: null,
+    playgroundPath: "/typescript",
     fileExtension: "ts",
-    runtime: "planned",
-    runtimeLabel: "Planned",
-    defaultCode: "",
+    runtime: "quickjs",
+    runtimeLabel: "TypeScript + QuickJS worker",
+    defaultCode: `type Person = {
+  name: string;
+  language: string;
+};
+
+const person: Person = {
+  name: "Ada",
+  language: "TypeScript",
+};
+
+console.log(\`\${person.name} is writing \${person.language}.\`);
+`,
   },
   {
     id: "swift",
