@@ -948,18 +948,6 @@ export default function PythonPlayground({
               <span className="code-font text-xs font-medium uppercase text-slate-300">
                 Output
               </span>
-              <span
-                className={`hidden h-7 items-center gap-1.5 rounded-md border px-2 text-xs sm:inline-flex ${getPillClass(
-                  statusMeta.tone,
-                )}`}
-              >
-                {runtimeStatus === "loading" ? (
-                  <LoaderCircle size={13} className="animate-spin" />
-                ) : (
-                  <span className={`size-1.5 rounded-full ${getDotClass(statusMeta.tone)}`} />
-                )}
-                {statusMeta.label}
-              </span>
               {!isIsolated ? (
                 <span className="hidden rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300 sm:inline">
                   Basic runtime
@@ -985,7 +973,7 @@ export default function PythonPlayground({
               {isIsolated ? (
                 <>
                   <ShieldCheck size={13} className="shrink-0 text-emerald-300" />
-                  <span className="truncate">Shared buffer ready</span>
+                  <span className="truncate">Interactive input enabled</span>
                 </>
               ) : (
                 <>
